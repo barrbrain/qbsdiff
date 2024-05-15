@@ -623,7 +623,7 @@ fn scan_divide<T: Eq, I: Iterator<Item = T>>(xs: I, ys: I, zs: I) -> usize {
         y_matched += usize::from(y_eq);
         z_matched += usize::from(z_eq);
         let score = y_matched.wrapping_sub(z_matched) as isize;
-        if score > max_score {
+        if score >= max_score {
             i = n;
             max_score = score;
         }

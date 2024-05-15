@@ -3,7 +3,6 @@
 use std::io::{Cursor, Result, Write};
 use std::ops::Range;
 
-use bzip2::write::BzEncoder;
 use bzip2::Compression;
 use rayon::prelude::*;
 use suffix_array::SuffixArray;
@@ -260,7 +259,7 @@ fn div_ceil(x: usize, y: usize) -> usize {
 }
 
 /// Construct bsdiff 4.x patch file from parts.
-fn pack<D, P>(source: &[u8], target: &[u8], diff: D, mut patch: P, level: Compression, bsize: usize) -> Result<u64>
+fn pack<D, P>(source: &[u8], target: &[u8], diff: D, mut patch: P, _level: Compression, bsize: usize) -> Result<u64>
 where
     D: Iterator<Item = Control>,
     P: Write,
@@ -270,9 +269,9 @@ where
     let mut bz_extra = Vec::new();
 
     {
-        let mut ctrls = BzEncoder::new(Cursor::new(&mut bz_ctrls), level);
-        let mut delta = BzEncoder::new(Cursor::new(&mut bz_delta), level);
-        let mut extra = BzEncoder::new(Cursor::new(&mut bz_extra), level);
+        let mut ctrls = Cursor::new(&mut bz_ctrls);
+        let mut delta = Cursor::new(&mut bz_delta);
+        let mut extra = Cursor::new(&mut bz_extra);
 
         let mut spos = 0;
         let mut tpos = 0;
@@ -320,6 +319,10 @@ where
         delta.flush()?;
         extra.flush()?;
     }
+    use lz4_flex::block::compress_prepend_size;
+    bz_ctrls = compress_prepend_size(bz_ctrls.as_slice());
+    bz_delta = compress_prepend_size(bz_delta.as_slice());
+    bz_extra = compress_prepend_size(bz_extra.as_slice());
 
     // Write header (BSDIFF4_MAGIC, control size, delta size, target size).
     let mut header = [0; 32];

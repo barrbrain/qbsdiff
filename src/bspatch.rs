@@ -47,17 +47,17 @@ pub const DELTA_MIN: usize = 32768;
 ///     patcher.apply(source, &mut target_file)
 /// }
 /// ```
-pub struct Bspatch<'p> {
-    patch: PatchFile<'p>,
+pub struct Bspatch {
+    patch: PatchFile,
     buffer_size: usize,
     delta_min: usize,
 }
 
-impl<'p> Bspatch<'p> {
+impl Bspatch {
     /// Parse the patch file and create new patcher configuration.
     ///
     /// Return error if failed to parse the patch header.
-    pub fn new(patch: &'p [u8]) -> Result<Self> {
+    pub fn new(patch: &[u8]) -> Result<Self> {
         Ok(Bspatch {
             patch: parse(patch)?,
             buffer_size: BUFFER_SIZE,
@@ -114,11 +114,11 @@ impl<'p> Bspatch<'p> {
 }
 
 /// Patch file content.
-struct PatchFile<'a> {
+struct PatchFile {
     tsize: u64,
-    ctrls: BzDecoder<Cursor<&'a [u8]>>,
-    delta: BzDecoder<Cursor<&'a [u8]>>,
-    extra: BzDecoder<Cursor<&'a [u8]>>,
+    ctrls: Cursor<Vec<u8>>,
+    delta: Cursor<Vec<u8>>,
+    extra: Cursor<Vec<u8>>,
 }
 
 /// Parse the bsdiff 4.x patch file.
@@ -138,9 +138,10 @@ fn parse(patch: &[u8]) -> Result<PatchFile> {
     let (bz_ctrls, remain) = remain.split_at(csize as usize);
     let (bz_delta, bz_extra) = remain.split_at(dsize as usize);
 
-    let ctrls = BzDecoder::new(Cursor::new(bz_ctrls));
-    let delta = BzDecoder::new(Cursor::new(bz_delta));
-    let extra = BzDecoder::new(Cursor::new(bz_extra));
+    use lz4_flex::block::decompress_size_prepended;
+    let ctrls = Cursor::new(decompress_size_prepended(bz_ctrls).unwrap());
+    let delta = Cursor::new(decompress_size_prepended(bz_delta).unwrap());
+    let extra = Cursor::new(decompress_size_prepended(bz_extra).unwrap());
 
     Ok(PatchFile {
         tsize,
@@ -151,11 +152,11 @@ fn parse(patch: &[u8]) -> Result<PatchFile> {
 }
 
 /// Bspatch context.
-struct Context<'s, 'p, T: Write> {
+struct Context<'s, T: Write> {
     source: Cursor<&'s [u8]>,
     target: T,
 
-    patch: PatchFile<'p>,
+    patch: PatchFile,
 
     n: usize,
     buf: Vec<u8>,
@@ -165,9 +166,9 @@ struct Context<'s, 'p, T: Write> {
     total: u64,
 }
 
-impl<'s, 'p, T: Write> Context<'s, 'p, T> {
+impl<'s, T: Write> Context<'s, T> {
     /// Create context.
-    pub fn new(patch: PatchFile<'p>, source: &'s [u8], target: T, bsize: usize, dsize: usize) -> Self {
+    pub fn new(patch: PatchFile, source: &'s [u8], target: T, bsize: usize, dsize: usize) -> Self {
         Context {
             source: Cursor::new(source),
             target,
